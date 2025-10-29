@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Psychoinformatics API Frontend</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-7xl mx-auto">
+    <h1 class="text-4xl font-bold text-center mb-8 text-gray-800">Psychoinformatics API Frontend</h1>
+    
+    <!-- 使用 Grid 分成三個區塊 -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      
+      <!-- 區塊 1: /terms -->
+      <div class="bg-white p-6 rounded-lg shadow-lg">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">1. Get All Terms</h2>
+        <button id="btn_terms" 
+                class="bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded p-3 w-full transition duration-200 mb-4">
+          Fetch All Terms
+        </button>
+        <pre id="out_terms" 
+             class="bg-white p-4 rounded border border-gray-300 shadow-inner text-xs overflow-auto max-h-96">
+          點擊按鈕以載入資料...
+        </pre>
+      </div>
+
+      <!-- 區塊 2: /terms/<t1> -->
+      <div class="bg-white p-6 rounded-lg shadow-lg">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">2. Get Term by &lt;t1&gt; <span class="text-sm text-gray-500">(自動完成)</span></h2>
+        <div class="relative">
+          <input type="text" 
+                 id="input_t1" 
+                 placeholder="Enter term (e.g., amygdala)"
+                 autocomplete="off"
+                 class="w-full p-3 border border-gray-300 rounded mb-3 focus:outline-none focus:ring-2 focus:ring-green-500">
+          <div id="suggestions_t1" 
+               class="absolute z-10 w-full bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-auto hidden"></div>
+        </div>
+        <pre id="out_t1" 
+             class="bg-white p-4 rounded border border-gray-300 shadow-inner text-xs overflow-auto max-h-96">
+          載入術語列表中...
+        </pre>
+      </div>
+
+      <!-- 區塊 3: /query/<q_string>/studies -->
+      <div class="bg-white p-6 rounded-lg shadow-lg">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">3. Query Studies <span class="text-sm text-gray-500">(AJAX 即時搜尋)</span></h2>
+        <input type="text" 
+               id="input_query" 
+               placeholder="Enter query (e.g., amygdala not emotion)"
+               class="w-full p-3 border border-gray-300 rounded mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+        <pre id="out_query" 
+             class="bg-white p-4 rounded border border-gray-300 shadow-inner text-xs overflow-auto max-h-96">
+          開始輸入以即時搜尋...
+        </pre>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // API 基礎網址 (使用替代伺服器)
+    const BASE_URL = 'https://hpc.psy.ntu.edu.tw:5000';
+    
+    // 儲存所有術語
+    let allTerms = [];
+
+    // 頁面載入時立即抓取所有術語
+    window.addEventListener('DOMContentLoaded', () => {
+      const out_t1 = document.getElementById('out_t1');
+      out_t1.textContent = '正在載入術語列表...';
+      
+      fetch(`${BASE_URL}/terms`)
+        .then(response => response.json())
+        .then(data => {
+          allTerms = data.terms || [];
+          out_t1.textContent = `✅ 已載入 ${allTerms.length} 個術語\n開始輸入以查看建議...`;
+        })
+        .catch(err => {
+          out_t1.textContent = '❌ 無法載入術語列表: ' + err.message;
+        });
+    });
+
+    // 功能 1: 查詢所有術語
+    document.getElementById('btn_terms').addEventListener('click', () => {
+      const out = document.getElementById('out_terms');
+      out.textContent = '正在請求資料...';
+      
+      fetch(`${BASE_URL}/terms`)
+        .then(response => {
+          let info = `HTTP ${response.status} ${response.statusText}\n\n`;
+          if (!response.ok) {
+            return response.text().then(text => {
+              out.textContent = info + text;
+            });
+          }
+          return response.json().then(data => {
+            out.textContent = info + JSON.stringify(data, null, 2);
+          });
+        })
+        .catch(err => {
+          out.textContent = 
+            'Error: ' + (err && err.message ? err.message : String(err)) +
+            '\n\n常見原因:\n1) 伺服器未允許 CORS\n2) 使用 file:// 而非本地伺服器開啟\n3) 網路或伺服器問題';
+        });
+    });
+
+    // 功能 2: 術語自動完成
+    const input_t1 = document.getElementById('input_t1');
+    const suggestions_t1 = document.getElementById('suggestions_t1');
+    const out_t1 = document.getElementById('out_t1');
+
+    // 輸入時顯示建議
+    input_t1.addEventListener('keyup', () => {
+      const query = input_t1.value.trim().toLowerCase();
+      
+      if (!query) {
+        suggestions_t1.classList.add('hidden');
+        suggestions_t1.innerHTML = '';
+        return;
+      }
+
+      // 過濾符合的術語
+      const matches = allTerms.filter(term => 
+        term.toLowerCase().startsWith(query)
+      ).slice(0, 10); // 最多顯示 10 個建議
+
+      if (matches.length === 0) {
+        suggestions_t1.classList.add('hidden');
+        suggestions_t1.innerHTML = '';
+        return;
+      }
+
+      // 顯示建議列表
+      suggestions_t1.innerHTML = matches.map(term => 
+        `<div class="px-4 py-2 hover:bg-green-100 cursor-pointer border-b border-gray-200" 
+              onclick="selectTerm('${term}')">${term}</div>`
+      ).join('');
+      suggestions_t1.classList.remove('hidden');
+    });
+
+    // 選擇術語
+    window.selectTerm = (term) => {
+      input_t1.value = term;
+      suggestions_t1.classList.add('hidden');
+      suggestions_t1.innerHTML = '';
+      
+      // 立即查詢該術語
+      fetchTermDetails(term);
+    };
+
+    // 查詢術語詳細資訊
+    function fetchTermDetails(term) {
+      out_t1.textContent = '正在請求資料...';
+      
+      fetch(`${BASE_URL}/terms/${term}`)
+        .then(response => {
+          let info = `HTTP ${response.status} ${response.statusText}\n\n`;
+          if (!response.ok) {
+            return response.text().then(text => {
+              out_t1.textContent = info + text;
+            });
+          }
+          return response.json().then(data => {
+            out_t1.textContent = info + JSON.stringify(data, null, 2);
+          });
+        })
+        .catch(err => {
+          out_t1.textContent = 
+            'Error: ' + (err && err.message ? err.message : String(err));
+        });
+    }
+
+    // 點擊其他地方時隱藏建議
+    document.addEventListener('click', (e) => {
+      if (!input_t1.contains(e.target) && !suggestions_t1.contains(e.target)) {
+        suggestions_t1.classList.add('hidden');
+      }
+    });
+
+    // 功能 3: 查詢研究 (AJAX 即時搜尋)
+    document.getElementById('input_query').addEventListener('keyup', () => {
+      const q_string = document.getElementById('input_query').value.trim();
+      const out = document.getElementById('out_query');
+
+      if (!q_string) {
+        out.textContent = '開始輸入以即時搜尋...';
+        return;
+      }
+
+      out.textContent = '正在請求資料...';
+      
+      // 使用 encodeURIComponent 處理特殊字元
+      const encodedQuery = encodeURIComponent(q_string);
+      
+      fetch(`${BASE_URL}/query/${encodedQuery}/studies`)
+        .then(response => {
+          let info = `HTTP ${response.status} ${response.statusText}\n\n`;
+          if (!response.ok) {
+            return response.text().then(text => {
+              out.textContent = info + text;
+            });
+          }
+          return response.json().then(data => {
+            out.textContent = info + JSON.stringify(data, null, 2);
+          });
+        })
+        .catch(err => {
+          out.textContent = 
+            'Error: ' + (err && err.message ? err.message : String(err)) +
+            '\n\n常見原因:\n1) 伺服器未允許 CORS\n2) 使用 file:// 而非本地伺服器開啟\n3) 網路或伺服器問題';
+        });
+    });
+  </script>
+</body>
+</html>
+
